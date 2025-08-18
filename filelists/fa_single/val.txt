@@ -1,0 +1,2 @@
+/data/amir/wavs/000101.wav|سلام دنیا!
+/data/amir/wavs/000102.wav|امتحان جمله جدید.
