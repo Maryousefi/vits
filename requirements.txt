@@ -1,4 +1,4 @@
-# Core
+# Core deep learning
 torch==2.2.2
 torchaudio==2.2.2
 torchvision==0.17.2
@@ -8,14 +8,14 @@ librosa==0.10.2.post1
 soundfile==0.12.1
 numba==0.58.1
 scipy==1.10.1
-numpy==1.24.3   
+numpy==1.24.3   # pinned for hazm compatibility
 
 # Training utils
 matplotlib==3.5.3
 tensorboard==2.11.2
 tqdm==4.66.4
 
-# Text + normalization
+# Text + normalization (Persian/English)
 Unidecode==1.3.8
 phonemizer==3.2.1
 hazm==0.10.0
@@ -29,3 +29,6 @@ jiwer==2.5.1
 
 # Build / extensions
 Cython==0.29.36
+
+# Notebook / interactive support
+IPython==8.12.3
