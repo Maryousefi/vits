@@ -9,6 +9,9 @@ import numpy as np
 from scipy.io.wavfile import read
 import torch
 
+# 🔹 import for Persian/English symbol handling
+from text import get_symbols  
+
 MATPLOTLIB_FLAG = False
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -95,7 +98,7 @@ def plot_spectrogram_to_numpy(spectrogram):
   plt.tight_layout()
 
   fig.canvas.draw()
-  data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+  data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
   data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
   plt.close()
   return data
@@ -124,7 +127,7 @@ def plot_alignment_to_numpy(alignment, info=None):
   plt.tight_layout()
 
   fig.canvas.draw()
-  data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+  data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
   data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
   plt.close()
   return data
@@ -157,37 +160,44 @@ def get_hparams(init=True):
   config_path = args.config
   config_save_path = os.path.join(model_dir, "config.json")
   if init:
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
       data = f.read()
-    with open(config_save_path, "w") as f:
+    with open(config_save_path, "w", encoding="utf-8") as f:
       f.write(data)
   else:
-    with open(config_save_path, "r") as f:
+    with open(config_save_path, "r", encoding="utf-8") as f:
       data = f.read()
   config = json.loads(data)
   
   hparams = HParams(**config)
   hparams.model_dir = model_dir
+
+  # PATCH: auto-switch symbols depending on cleaners
+  if hasattr(hparams, "data") and "text_cleaners" in hparams.data:
+    cleaners = hparams.data["text_cleaners"]
+    if len(cleaners) > 0:
+      get_symbols(cleaners[0])  # updates text.symbols globally
+
   return hparams
 
 
 def get_hparams_from_dir(model_dir):
   config_save_path = os.path.join(model_dir, "config.json")
-  with open(config_save_path, "r") as f:
+  with open(config_save_path, "r", encoding="utf-8") as f:
     data = f.read()
   config = json.loads(data)
 
-  hparams =HParams(**config)
+  hparams = HParams(**config)
   hparams.model_dir = model_dir
   return hparams
 
 
 def get_hparams_from_file(config_path):
-  with open(config_path, "r") as f:
+  with open(config_path, "r", encoding="utf-8") as f:
     data = f.read()
   config = json.loads(data)
 
-  hparams =HParams(**config)
+  hparams = HParams(**config)
   return hparams
 
 
