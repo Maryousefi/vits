@@ -8,7 +8,8 @@ librosa==0.10.2.post1
 soundfile==0.12.1
 numba==0.58.1
 scipy==1.10.1
-numpy==1.24.3
+numpy==1.24.3   
+
 # Training utils
 matplotlib==3.5.3
 tensorboard==2.11.2
