@@ -6,7 +6,7 @@ torchvision==0.17.2
 # Audio + DSP
 librosa==0.10.2.post1
 soundfile==0.12.1
-numba==0.59.1
+numba==0.58.1
 scipy==1.13.1
 numpy==1.26.4
 
