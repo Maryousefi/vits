@@ -9,7 +9,7 @@ import numpy as np
 from scipy.io.wavfile import read
 import torch
 
-# 🔹 import for Persian/English symbol handling
+# import for Persian/English symbol handling
 from text import get_symbols  
 
 MATPLOTLIB_FLAG = False
