@@ -9,9 +9,6 @@ import numpy as np
 from scipy.io.wavfile import read
 import torch
 
-# import for Persian/English symbol handling
-from text import get_symbols  
-
 MATPLOTLIB_FLAG = False
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -172,12 +169,6 @@ def get_hparams(init=True):
   hparams = HParams(**config)
   hparams.model_dir = model_dir
 
-  # PATCH: auto-switch symbols depending on cleaners
-  if hasattr(hparams, "data") and "text_cleaners" in hparams.data:
-    cleaners = hparams.data["text_cleaners"]
-    if len(cleaners) > 0:
-      get_symbols(cleaners[0])  # updates text.symbols globally
-
   return hparams
 
 
@@ -229,7 +220,7 @@ def get_logger(model_dir, filename="train.log"):
   formatter = logging.Formatter("%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
   if not os.path.exists(model_dir):
     os.makedirs(model_dir)
-  h = logging.FileHandler(os.path.join(model_dir, filename))
+  h = logging.FileHandler(os.path.join(model_dir, filename), encoding='utf-8')
   h.setLevel(logging.DEBUG)
   h.setFormatter(formatter)
   logger.addHandler(h)
