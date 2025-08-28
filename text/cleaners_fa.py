@@ -9,7 +9,7 @@ AR2FA_MAP = {
 }
 
 # Safe punctuation that should be preserved
-SAFE_PUNCTUATION = "،؛؟!.\"'"
+SAFE_PUNCTUATION = "،؛؟!.\"'(),-:; "
 
 # Farsi digits to English digits
 FARSI_DIGITS = {
@@ -40,12 +40,15 @@ def normalize_persian(text: str) -> str:
     # Normalize digits
     text = normalize_digits(text)
     
-    # Remove diacritics (optional - you might want to keep some)
+    # Remove diacritics (Tashdid, Kasre, etc.) - optional
+    # You might want to keep some diacritics for better pronunciation
     text = "".join(ch for ch in unicodedata.normalize("NFD", text)
-                   if unicodedata.category(ch) != "Mn")
+                   if unicodedata.category(ch) not in ["Mn", "Me"])
     
-    # Keep only Farsi letters, English letters, digits, and safe punctuation
-    text = re.sub(r"[^آ-یA-Za-z0-9" + re.escape(SAFE_PUNCTUATION) + r"\s]", " ", text)
+    # Keep only allowed characters: Persian letters, English letters, digits, and safe punctuation
+    # Persian Unicode range: \u0600-\u06FF (Arabic/Persian block)
+    allowed_pattern = r"[^\u0600-\u06FFA-Za-z0-9" + re.escape(SAFE_PUNCTUATION) + r"]"
+    text = re.sub(allowed_pattern, " ", text)
     
     # Collapse multiple spaces
     text = re.sub(r"\s+", " ", text).strip()
@@ -68,13 +71,49 @@ def lowercase_latin(text: str) -> str:
 
 def persian_cleaners(text: str) -> str:
     """Main Persian text cleaning pipeline."""
+    # Normalize Persian characters
     text = normalize_persian(text)
+    
+    # Convert Latin to lowercase
     text = lowercase_latin(text)
+    
+    # Remove extra spaces
     text = remove_extra_spaces(text)
+    
+    # Ensure text is not empty
+    if not text.strip():
+        text = " "
+    
     return text
 
 def basic_persian_cleaners(text: str) -> str:
     """Basic Persian cleaning without aggressive normalization."""
+    # Just normalize digits and spaces
     text = normalize_digits(text)
     text = remove_extra_spaces(text)
+    
+    # Ensure text is not empty
+    if not text.strip():
+        text = " "
+        
     return text
+
+def test_cleaners():
+    """Test function to verify cleaners work correctly."""
+    test_texts = [
+        "سلام دنیا! چطوری؟",
+        "این متن فارسی است با ۱۲۳ عدد",
+        "Mixed text with English and فارسی",
+        "ك ي ۀ",  # Arabic characters that should be converted
+        "متن    با    فاصله‌های    زیاد"
+    ]
+    
+    print("Testing Persian cleaners:")
+    for text in test_texts:
+        cleaned = persian_cleaners(text)
+        print(f"Original: {text}")
+        print(f"Cleaned:  {cleaned}")
+        print()
+
+if __name__ == "__main__":
+    test_cleaners()
