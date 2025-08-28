@@ -4,8 +4,7 @@ Defines the set of symbols used in text input to the model for Persian language.
 """
 
 # Padding symbol
-_pad = "_"
-
+_pad = "*"
 # End of sequence symbol
 _eos = "~"
 
