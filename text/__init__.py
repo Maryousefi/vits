@@ -1,127 +1,125 @@
 """
-Text processing for VITS with Persian/Farsi support.
+Text processing module for Persian VITS.
+Handles symbol loading and text-to-sequence conversion.
 """
-from text import cleaners
 
-# Try to import Persian cleaners
-try:
-    from text import cleaners_fa
-except ImportError:
-    print("Warning: Persian cleaners not available")
-    cleaners_fa = None
+import os
+import sys
+import importlib
 
-# Import symbol sets
-try:
-    from text.symbols import symbols as en_symbols
-except ImportError:
-    # Fallback English symbols
-    en_symbols = ['_', '-', '!', "'", '(', ')', ',', '.', ':', ';', '?', ' '] + \
-                 [chr(i) for i in range(ord('A'), ord('Z')+1)] + \
-                 [chr(i) for i in range(ord('a'), ord('z')+1)]
+# Add the text directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
-try:
-    from text.symbols_fa import symbols as fa_symbols
-except ImportError:
-    print("Warning: Persian symbols not available")
-    fa_symbols = en_symbols  # fallback
+# Import cleaners
+from .cleaners_fa import persian_cleaners, basic_persian_cleaners
 
-# Map cleaner names to their functions
-_cleaner_functions = {
-    "english_cleaners": cleaners.english_cleaners,
-    "transliteration_cleaners": cleaners.transliteration_cleaners,
-    "basic_cleaners": cleaners.basic_cleaners,
+# Cleaner mapping
+_cleaners = {
+    'persian_cleaners': persian_cleaners,
+    'basic_persian_cleaners': basic_persian_cleaners,
 }
 
-# Add Persian cleaners if available
-if cleaners_fa:
-    _cleaner_functions.update({
-        "persian_cleaners": cleaners_fa.persian_cleaners,
-        "basic_persian_cleaners": cleaners_fa.basic_persian_cleaners,
-    })
-
-# Default: English symbols  
-symbols = en_symbols
-
-def get_symbols(cleaner_names=None):
+def get_symbols(cleaner_names):
     """
-    Return appropriate symbol set based on cleaner name.
-    Updates the global symbols variable.
+    Get symbols based on the cleaner names.
     """
-    global symbols
+    if isinstance(cleaner_names, str):
+        cleaner_names = [cleaner_names]
     
-    if cleaner_names:
-        if isinstance(cleaner_names, str):
-            cleaner_names = [cleaner_names]
-        
-        # Check if any cleaner is Persian
-        for cleaner_name in cleaner_names:
-            if cleaner_name and "persian" in cleaner_name.lower():
-                symbols = fa_symbols
-                return symbols
-    
-    # Default to English
-    symbols = en_symbols
-    return symbols
+    # For Persian cleaners, always use Persian symbols
+    if any('persian' in name for name in cleaner_names):
+        from .symbols_fa import get_persian_symbols
+        return get_persian_symbols()
+    else:
+        # Fallback to basic Persian symbols
+        from .symbols_fa import get_persian_symbols
+        return get_persian_symbols()
 
-def text_to_sequence(text, cleaners_names):
+def text_to_sequence(text, cleaner_names):
     """
-    Converts a string of text to a sequence of IDs corresponding to the symbols in the text.
+    Converts text to a sequence of IDs corresponding to the symbols.
+    
     Args:
         text: string to convert to a sequence
-        cleaners_names: names of the cleaner functions to run the text through
+        cleaner_names: list of cleaner names to apply
+        
     Returns:
-        List of integers corresponding to the symbols in the text
+        List of integers corresponding to the symbols
     """
-    # Update symbols based on cleaners
-    current_symbols = get_symbols(cleaners_names)
+    if isinstance(cleaner_names, str):
+        cleaner_names = [cleaner_names]
     
+    # Clean the text
+    cleaned_text = text
+    for cleaner_name in cleaner_names:
+        if cleaner_name in _cleaners:
+            cleaned_text = _cleaners[cleaner_name](cleaned_text)
+        else:
+            print(f"Warning: Cleaner '{cleaner_name}' not found, using persian_cleaners")
+            cleaned_text = persian_cleaners(cleaned_text)
+    
+    # Get symbols based on cleaners
+    symbols = get_symbols(cleaner_names)
+    symbol_to_id = {s: i for i, s in enumerate(symbols)}
+    
+    # Convert text to sequence
     sequence = []
-    
-    # Apply cleaners
-    if isinstance(cleaners_names, str):
-        cleaners_names = [cleaners_names]
-    
-    for cleaner_name in cleaners_names:
-        if cleaner_name in _cleaner_functions:
-            text = _cleaner_functions[cleaner_name](text)
+    for char in cleaned_text:
+        if char in symbol_to_id:
+            sequence.append(symbol_to_id[char])
         else:
-            print(f"Warning: Unknown cleaner '{cleaner_name}', skipping...")
-    
-    # Convert text to symbol IDs
-    for symbol in text:
-        if symbol in current_symbols:
-            sequence.append(current_symbols.index(symbol))
-        else:
-            # Handle unknown symbols
-            print(f"Warning: Unknown symbol '{symbol}' (ord: {ord(symbol)})")
-            # Replace with space if available, otherwise skip
-            if " " in current_symbols:
-                sequence.append(current_symbols.index(" "))
+            # Use pad token for unknown characters
+            sequence.append(0)
+            print(f"Warning: Unknown character '{char}' (ord: {ord(char)}) replaced with pad token")
     
     return sequence
 
-def sequence_to_text(sequence):
+def sequence_to_text(sequence, cleaner_names):
     """
-    Converts a sequence of IDs back to a string
+    Converts a sequence of IDs back to text.
+    
+    Args:
+        sequence: list of integers
+        cleaner_names: list of cleaner names (for symbol loading)
+        
+    Returns:
+        String representation
     """
-    result = ""
+    symbols = get_symbols(cleaner_names)
+    result = ''
     for symbol_id in sequence:
         if 0 <= symbol_id < len(symbols):
             result += symbols[symbol_id]
-        else:
-            result += "?"  # Unknown symbol placeholder
     return result
 
-# For backward compatibility and convenience
-def clean_text(text, cleaners_names):
-    """Apply cleaners to text."""
-    if isinstance(cleaners_names, str):
-        cleaners_names = [cleaners_names]
-    
-    for cleaner_name in cleaners_names:
-        if cleaner_name in _cleaner_functions:
-            text = _cleaner_functions[cleaner_name](text)
-    return text
+# Legacy support 
+def _clean_text(text, cleaner_names):
+    """Apply text cleaners."""
+    return text_to_sequence(text, cleaner_names)
 
-# Export main symbols for external use
-__all__ = ['symbols', 'text_to_sequence', 'sequence_to_text', 'clean_text', 'get_symbols']
+# For backward compatibility
+from .symbols_fa import get_persian_symbols
+
+def test_text_processing():
+    """Test the text processing pipeline."""
+    print("Testing Persian text processing...")
+    
+    test_texts = [
+        "سلام دنیا!",
+        "این یک تست است.",
+        "۱۲۳ عدد فارسی",
+        "Mixed text with فارسی"
+    ]
+    
+    for text in test_texts:
+        print(f"Original: '{text}'")
+        sequence = text_to_sequence(text, ['persian_cleaners'])
+        reconstructed = sequence_to_text(sequence, ['persian_cleaners'])
+        print(f"Sequence length: {len(sequence)}")
+        print(f"Reconstructed: '{reconstructed}'")
+        print()
+
+if __name__ == "__main__":
+    test_text_processing()
