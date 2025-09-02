@@ -1,25 +1,22 @@
 {
   "train": {
+    "batch_size": 16,
+    "eval_interval": 2000,
     "log_interval": 200,
-    "eval_interval": 1000,
     "seed": 1234,
-    "epochs": 10000,
+    "epochs": 1000,
     "learning_rate": 2e-4,
     "betas": [0.8, 0.99],
     "eps": 1e-9,
-    "batch_size": 16,
-    "fp16_run": true,
     "lr_decay": 0.999875,
     "segment_size": 8192,
-    "init_lr_ratio": 1,
-    "warmup_epochs": 0,
     "c_mel": 45,
-    "c_kl": 1.0
+    "c_kl": 1.0,
+    "fp16_run": true
   },
   "data": {
-    "training_files": "filelists/fa_single/train.txt",
-    "validation_files": "filelists/fa_single/val.txt",
-    "text_cleaners": ["persian_cleaners"],
+    "training_files": "filelists/fa_amir_train.txt",
+    "validation_files": "filelists/fa_amir_val.txt",
     "max_wav_value": 32768.0,
     "sampling_rate": 22050,
     "filter_length": 1024,
@@ -27,14 +24,12 @@
     "win_length": 1024,
     "n_mel_channels": 80,
     "mel_fmin": 0.0,
-    "mel_fmax": null,
+    "mel_fmax": 8000.0,
     "add_blank": true,
-    "n_speakers": 0,
-    "cleaned_text": false,
-    "min_text_len": 1,
-    "max_text_len": 190
+    "text_cleaners": ["persian_cleaners"]
   },
   "model": {
+    "use_spectral_norm": false,
     "inter_channels": 192,
     "hidden_channels": 192,
     "filter_channels": 768,
@@ -48,8 +43,6 @@
     "upsample_rates": [8,8,2,2],
     "upsample_initial_channel": 512,
     "upsample_kernel_sizes": [16,16,4,4],
-    "n_layers_q": 3,
-    "use_spectral_norm": false,
-    "gin_channels": 0
+    "n_layers_q": 3
   }
 }
