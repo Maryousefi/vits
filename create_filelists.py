@@ -1,26 +1,38 @@
 import os
-import random
 
-dataset_dir = "dataset/amir"
-wavs_dir = os.path.join(dataset_dir, "wavs")
-transcript_file = os.path.join(dataset_dir, "transcripts.txt")
+# Paths
+base_dir = "data/amir"
+wav_dir = os.path.join(base_dir, "wavs")
+transcript_path = os.path.join(base_dir, "transcripts.txt")
+out_dir = "filelists/fa_single"
+
+os.makedirs(out_dir, exist_ok=True)
 
 # Read transcripts
-with open(transcript_file, encoding="utf-8") as f:
-    lines = [line.strip().split("|") for line in f]
+with open(transcript_path, "r", encoding="utf-8") as f:
+    lines = [line.strip() for line in f if line.strip()]
 
-data = [os.path.join(wavs_dir, wav) + "|" + text for wav, text in lines]
+# Expand to absolute or relative wav paths
+pairs = []
+for line in lines:
+    fname, text = line.split("|", 1)
+    wav_path = os.path.join(wav_dir, fname)
+    pairs.append(f"{wav_path}|{text}")
 
-# Shuffle and split
-random.shuffle(data)
-split_idx = int(0.9 * len(data))
-train, val = data[:split_idx], data[split_idx:]
+# Split 80/20 for train/val
+split_idx = int(len(pairs) * 0.8)
+train_pairs = pairs[:split_idx]
+val_pairs = pairs[split_idx:]
 
 # Save
-os.makedirs("filelists", exist_ok=True)
-with open("filelists/fa_amir_train.txt", "w", encoding="utf-8") as f:
-    f.write("\n".join(train))
-with open("filelists/fa_amir_val.txt", "w", encoding="utf-8") as f:
-    f.write("\n".join(val))
+train_out = os.path.join(out_dir, "train.txt")
+val_out = os.path.join(out_dir, "val.txt")
 
-print(f"Created {len(train)} train and {len(val)} val samples.")
+with open(train_out, "w", encoding="utf-8") as f:
+    f.write("\n".join(train_pairs) + "\n")
+
+with open(val_out, "w", encoding="utf-8") as f:
+    f.write("\n".join(val_pairs) + "\n")
+
+print(f" Wrote {len(train_pairs)} training lines to {train_out}")
+print(f" Wrote {len(val_pairs)} validation lines to {val_out}")
