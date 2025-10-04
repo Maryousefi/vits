@@ -20,7 +20,11 @@ if _this_dir not in sys.path:
     sys.path.insert(0, _this_dir)
 
 # Import Persian cleaners
-from .cleaners_fa import persian_cleaners, basic_persian_cleaners, minimal_persian_cleaners
+from .cleaners_fa import (
+    persian_cleaners,
+    basic_persian_cleaners,
+    minimal_persian_cleaners
+)
 
 _cleaners = {
     "persian_cleaners": persian_cleaners,
@@ -60,8 +64,9 @@ def get_symbols(cleaner_names):
             try:
                 from .symbols_fa import get_persian_symbols
                 return get_persian_symbols()
-            except Exception:
-                # If symbols_fa not available, fallback to minimal english-like list
+            except Exception as e:
+                # fallback if symbols_fa.py is missing
+                print(" Warning: Persian symbols not found, falling back to English-like set:", e)
                 return _load_english_symbols()
 
     # otherwise return english symbols if available
@@ -81,7 +86,7 @@ def text_to_sequence(text, cleaner_names):
             cleaned = _cleaners[cname](cleaned)
         else:
             # unknown cleaner -> warn and fallback to persian_cleaners
-            print(f"Warning: cleaner '{cname}' not found. Falling back to persian_cleaners.")
+            print(f" Warning: cleaner '{cname}' not found. Falling back to persian_cleaners.")
             cleaned = persian_cleaners(cleaned)
 
     symbols = get_symbols(cleaner_names)
@@ -98,6 +103,9 @@ def text_to_sequence(text, cleaner_names):
 
 
 def sequence_to_text(sequence, cleaner_names):
+    """
+    Convert numeric sequence back to text (useful for debugging).
+    """
     symbols = get_symbols(cleaner_names)
     id_to_symbol = {i: s for i, s in enumerate(symbols)}
     out = []
