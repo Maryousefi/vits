@@ -1,4 +1,6 @@
+# create_filelists.py
 import os
+import random
 
 # Paths
 base_dir = "dataset/amir"
@@ -14,15 +16,28 @@ with open(transcript_path, "r", encoding="utf-8") as f:
 
 pairs = []
 for line in lines:
-    fname, text = line.split("|", 1)
+    try:
+        fname, text = line.split("|", 1)
+    except ValueError:
+        print(f"Skipping malformed line: {line}")
+        continue
+
     wav_path = os.path.join(wav_dir, fname)
+    if not os.path.exists(wav_path):
+        print(f"Warning: missing wav file {wav_path}")
+        continue
+
     pairs.append(f"{wav_path}|{text}")
 
-# Split 90% train / 10% validation
-split_idx = int(len(pairs) * 0.9)
+# Shuffle for randomness
+random.shuffle(pairs)
+
+# Split 80/20
+split_idx = int(len(pairs) * 0.8)
 train_pairs = pairs[:split_idx]
 val_pairs = pairs[split_idx:]
 
+# Save
 train_out = os.path.join(out_dir, "train.txt")
 val_out = os.path.join(out_dir, "val.txt")
 
