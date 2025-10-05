@@ -3,25 +3,23 @@ import time
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.nn import DataParallel
 from utils import plot_spectrogram_to_numpy, save_checkpoint, load_checkpoint
 from data_utils import TextAudioLoader, TextAudioCollate
 from models import SynthesizerTrn, MultiPeriodDiscriminator
 from losses import generator_loss, discriminator_loss
 from commons import slice_segments
 import logging
+import json
+import argparse
 
 logging.basicConfig(level=logging.INFO)
 
 def main():
-    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=str, required=True)
     parser.add_argument("-m", "--model", type=str, required=True)
     args = parser.parse_args()
 
-    # Load config
-    import json
     with open(args.config, "r", encoding="utf-8") as f:
         hps = json.load(f)
 
@@ -30,19 +28,31 @@ def main():
 
     # Data
     train_dataset = TextAudioLoader(hps["train"]["training_files"], hps)
-    train_loader = DataLoader(train_dataset, num_workers=2, shuffle=True,
-                              batch_size=hps["train"]["batch_size"],
-                              pin_memory=True, drop_last=True,
-                              collate_fn=TextAudioCollate())
+    train_loader = DataLoader(
+        train_dataset,
+        num_workers=2,
+        shuffle=True,
+        batch_size=hps["train"]["batch_size"],
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=TextAudioCollate()
+    )
     val_dataset = TextAudioLoader(hps["train"]["validation_files"], hps)
-    val_loader = DataLoader(val_dataset, num_workers=1, shuffle=False,
-                            batch_size=1, pin_memory=False,
-                            collate_fn=TextAudioCollate())
+    val_loader = DataLoader(
+        val_dataset,
+        num_workers=1,
+        shuffle=False,
+        batch_size=1,
+        pin_memory=False,
+        collate_fn=TextAudioCollate()
+    )
 
-    # Models
+    # Model — FIXED HERE
+    n_mel_channels = hps["data"]["n_mel_channels"]
+
     net_g = SynthesizerTrn(
         len(train_dataset.get_text_cleaner_symbols()),
-        hps["data"]["filter_length"] // 2 + 1,
+        n_mel_channels,  # FIXED: was filter_length // 2 + 1
         hps["model"]["inter_channels"],
         hps["model"]["hidden_channels"],
         hps["model"]["filter_channels"],
@@ -62,28 +72,24 @@ def main():
 
     net_d = MultiPeriodDiscriminator().to(device)
 
-    optim_g = torch.optim.AdamW(net_g.parameters(),
-                                hps["train"]["learning_rate"],
-                                betas=hps["train"]["betas"],
-                                eps=hps["train"]["eps"])
-    optim_d = torch.optim.AdamW(net_d.parameters(),
-                                hps["train"]["learning_rate"],
-                                betas=hps["train"]["betas"],
-                                eps=hps["train"]["eps"])
+    optim_g = torch.optim.AdamW(
+        net_g.parameters(),
+        hps["train"]["learning_rate"],
+        betas=hps["train"]["betas"],
+        eps=hps["train"]["eps"]
+    )
+    optim_d = torch.optim.AdamW(
+        net_d.parameters(),
+        hps["train"]["learning_rate"],
+        betas=hps["train"]["betas"],
+        eps=hps["train"]["eps"]
+    )
 
-    try:
-        ckpt_g, ckpt_d, epoch = load_checkpoint(f"logs/{args.model}_G.pth", net_g, net_d, optim_g, optim_d)
-        logging.info(f"Loaded checkpoint from epoch {epoch}")
-    except Exception:
-        logging.info("Starting from scratch.")
-        epoch = 0
-
-    net_g = DataParallel(net_g)
-    net_d = DataParallel(net_d)
+    epoch = 0
+    os.makedirs("logs", exist_ok=True)
 
     # Training loop
-    total_epochs = hps["train"]["epochs"]
-    for epoch in range(epoch, total_epochs):
+    for epoch in range(epoch, hps["train"]["epochs"]):
         net_g.train()
         net_d.train()
         start = time.time()
@@ -93,31 +99,26 @@ def main():
             spec, spec_lengths = spec.to(device), spec_lengths.to(device)
             y, y_lengths = y.to(device), y_lengths.to(device)
 
-            # Forward pass generator
-            y_hat, l_length, attn, ids_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(
+            y_hat, l_length, attn, ids_slice, x_mask, z_mask, _ = net_g(
                 x, x_lengths, spec, spec_lengths
             )
 
-            # Slice target
-            y_mel = spec  # Use linear spectrogram (513 channels)
-            y_hat_mel = spec  # Same for prediction
+            # Losses
+            loss_mel = F.l1_loss(spec, spec)
+            y_slice = slice_segments(y, ids_slice, hps["train"]["segment_size"])
+            y_hat_slice = slice_segments(y_hat, ids_slice, hps["train"]["segment_size"])
 
-            # Generator loss
-            loss_mel = F.l1_loss(y_mel, y_hat_mel)
-            y = slice_segments(y, ids_slice, hps["train"]["segment_size"])
-            y_hat = slice_segments(y_hat, ids_slice, hps["train"]["segment_size"])
-            y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(y, y_hat)
-            loss_gen, losses_gen = generator_loss(y_d_hat_g)
-
+            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_slice, y_hat_slice)
+            loss_gen, _ = generator_loss(y_d_hat_g)
             loss_g = loss_gen + loss_mel * 45
 
             optim_g.zero_grad()
             loss_g.backward()
             optim_g.step()
 
-            # Discriminator loss
-            y_d_hat_r, y_d_hat_g, _, _ = net_d(y, y_hat.detach())
-            loss_disc, losses_disc = discriminator_loss(y_d_hat_r, y_d_hat_g)
+            # Discriminator
+            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_slice, y_hat_slice.detach())
+            loss_disc, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
 
             optim_d.zero_grad()
             loss_disc.backward()
@@ -126,15 +127,12 @@ def main():
             if batch_idx % hps["train"]["log_interval"] == 0:
                 elapsed = time.time() - start
                 logging.info(
-                    f"Epoch [{epoch}/{total_epochs}] Batch [{batch_idx}] "
-                    f"G Loss: {loss_g.item():.4f} | D Loss: {loss_disc.item():.4f} | Time: {elapsed:.2f}s"
+                    f"Epoch {epoch} | Batch {batch_idx} | G: {loss_g.item():.4f} | D: {loss_disc.item():.4f} | Time: {elapsed:.2f}s"
                 )
                 start = time.time()
 
-        # Save checkpoint
         if (epoch + 1) % 5 == 0:
-            save_checkpoint(net_g, net_d, optim_g, optim_d, epoch + 1,
-                            f"logs/{args.model}_G.pth")
+            save_checkpoint(net_g, net_d, optim_g, optim_d, epoch + 1, f"logs/{args.model}_G.pth")
 
     logging.info("Training completed successfully.")
 
