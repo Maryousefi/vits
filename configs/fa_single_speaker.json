@@ -25,7 +25,7 @@
     "filter_length": 1024,
     "hop_length": 256,
     "win_length": 1024,
-    "n_mel_channels": 80,
+    "n_mel_channels": 513,
     "add_blank": true,
     "n_speakers": 1
   },
