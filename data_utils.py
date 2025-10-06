@@ -6,7 +6,7 @@ import torch.utils.data
 import torchaudio
 
 import commons  
-from commons import spectrogram_torch
+from commons import mel_spectrogram_torch  # CHANGED: Use mel spectrogram
 from text import text_to_sequence
 
 
@@ -28,6 +28,10 @@ class TextAudioLoader(torch.utils.data.Dataset):
         self.add_blank = hps["data"]["add_blank"]
         self.n_speakers = hps["data"]["n_speakers"]
         self._n_symbols = 300  # default fallback
+        
+        # Mel parameters
+        self.mel_fmin = hps["data"].get("mel_fmin", 0.0)
+        self.mel_fmax = hps["data"].get("mel_fmax", 8000.0)
 
     def load_filelist(self, path):
         with open(path, "r", encoding="utf-8") as f:
@@ -59,17 +63,20 @@ class TextAudioLoader(torch.utils.data.Dataset):
         audio = audio.mean(dim=0, keepdim=True)  # mono
         audio = audio.clamp(-1, 1)
 
-        # Compute spectrogram
-        spec = spectrogram_torch(
+        # Compute MEL spectrogram - CHANGED: Use mel spectrogram
+        mel = mel_spectrogram_torch(
             audio,
-            self.filter_length,
-            self.sampling_rate,
-            self.hop_length,
-            self.win_length,
+            self.filter_length,      # n_fft
+            self.n_mel_channels,     # num_mels
+            self.sampling_rate,      # sampling_rate
+            self.hop_length,         # hop_size
+            self.win_length,         # win_size
+            self.mel_fmin,           # fmin
+            self.mel_fmax,           # fmax
             center=False
         )
-        spec = torch.squeeze(spec, 0)
-        return spec
+        mel = torch.squeeze(mel, 0)
+        return mel
 
     def __getitem__(self, index):
         line = self.filelist[index]
