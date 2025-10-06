@@ -57,12 +57,23 @@ def main():
     )
 
     # -------------------
-    # Model Setup
+    # Model Setup - FIXED
     # -------------------
     n_mel_channels = hps["data"]["n_mel_channels"]
 
-    # Fixed: no len() here
-    n_vocab = getattr(train_dataset, "n_symbols", 300)
+    # Get n_vocab properly
+    try:
+        # Try to get symbols length first
+        symbols = train_dataset.get_text_cleaner_symbols()
+        if isinstance(symbols, int):
+            n_vocab = symbols  # It's already the number
+        else:
+            n_vocab = len(symbols)  # It's a list of symbols
+    except:
+        # Fallback to n_symbols attribute
+        n_vocab = getattr(train_dataset, "n_symbols", 300)
+    
+    logging.info(f"Using n_vocab: {n_vocab}")
 
     net_g = SynthesizerTrn(
         n_vocab,  # number of phoneme or text symbols
