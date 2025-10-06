@@ -45,11 +45,17 @@ def rand_gumbel_like(x):
 
 
 def slice_segments(x, ids_str, segment_size=4):
+    # FIXED: Add safety check for segment size
+    b, _, t = x.size()
     ret = torch.zeros_like(x[:, :, :segment_size])
-    for i in range(x.size(0)):
+    for i in range(b):
         idx_str = ids_str[i]
         idx_end = idx_str + segment_size
-        ret[i] = x[i, :, idx_str:idx_end]
+        # Ensure we don't go beyond the actual length
+        actual_end = min(idx_end, t)
+        segment_length = actual_end - idx_str
+        if segment_length > 0:
+            ret[i, :, :segment_length] = x[i, :, idx_str:actual_end]
     return ret
 
 
@@ -57,8 +63,9 @@ def rand_slice_segments(x, x_lengths=None, segment_size=4):
     b, d, t = x.size()
     if x_lengths is None:
         x_lengths = t
-    ids_str_max = x_lengths - segment_size + 1
-    ids_str = (torch.rand([b]).to(device=x.device) * ids_str_max).to(dtype=torch.long)
+    # FIXED: Ensure segment_size doesn't exceed actual lengths
+    ids_str_max = torch.clamp(x_lengths - segment_size, min=1)
+    ids_str = (torch.rand([b]).to(device=x.device) * ids_str_max.float()).to(dtype=torch.long)
     ret = slice_segments(x, ids_str, segment_size)
     return ret, ids_str
 
