@@ -28,14 +28,13 @@ def intersperse(lst, item):
 
 
 def kl_divergence(m_p, logs_p, m_q, logs_q):
-    """KL(P||Q)"""
     kl = (logs_q - logs_p) - 0.5
     kl += 0.5 * (torch.exp(2. * logs_p) + ((m_p - m_q) ** 2)) * torch.exp(-2. * logs_q)
     return kl
 
 
 def rand_gumbel(shape):
-    """Sample from the Gumbel distribution, protect from overflows."""
+    """Sample from Gumbel distribution, protect from overflows."""
     uniform_samples = torch.rand(shape) * 0.99998 + 0.00001
     return -torch.log(-torch.log(uniform_samples))
 
@@ -121,10 +120,6 @@ def sequence_mask(length, max_length=None):
 
 
 def generate_path(duration, mask):
-    """
-    duration: [b, 1, t_x]
-    mask: [b, 1, t_y, t_x]
-    """
     device = duration.device
     b, _, t_y, t_x = mask.shape
     cum_duration = torch.cumsum(duration, -1)
@@ -154,22 +149,18 @@ def clip_grad_value_(parameters, clip_value, norm_type=2):
     return total_norm
 
 
-# === FIXED: Missing Function ===
+# ---- Added Missing Function ----
 def spectrogram_torch(y, n_fft, sampling_rate, hop_size, win_size, center=False):
     """
-    Compute a linear spectrogram from audio waveform.
-    Returns: Spectrogram tensor [B, n_fft//2 + 1, T]
+    Compute magnitude spectrogram.
     """
     hann_window = torch.hann_window(win_size).to(y.device)
-
-    # Reflect-pad the waveform
-    y = torch.nn.functional.pad(
+    y = F.pad(
         y.unsqueeze(1),
         (int((n_fft - hop_size) / 2), int((n_fft - hop_size) / 2)),
         mode='reflect'
     )
     y = y.squeeze(1)
-
     spec = torch.stft(
         y,
         n_fft,
@@ -182,6 +173,5 @@ def spectrogram_torch(y, n_fft, sampling_rate, hop_size, win_size, center=False)
         onesided=True,
         return_complex=True
     )
-
     spec = torch.sqrt(spec.real ** 2 + spec.imag ** 2 + 1e-6)
     return spec
