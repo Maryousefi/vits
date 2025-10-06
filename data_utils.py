@@ -55,14 +55,14 @@ class TextAudioLoader(torch.utils.data.Dataset):
         audio_norm = audio / self.max_wav_value
         audio_norm = audio_norm.unsqueeze(0)
 
-        # Compute Mel spectrogram
+        # Compute Mel spectrogram - FIXED PARAMETER NAMES
         mel = spectrogram_torch(
             audio_norm,
-            n_fft=self.filter_length,
-            sampling_rate=self.sampling_rate,
-            hop_size=self.hop_length,
-            win_size=self.win_length,
-            n_mel_channels=self.n_mel_channels,
+            self.filter_length,  # n_fft
+            self.sampling_rate,
+            self.hop_length,     # hop_size
+            self.win_length,     # win_size
+            self.n_mel_channels,
             center=False
         )
         mel = torch.squeeze(mel, 0)
