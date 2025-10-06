@@ -61,17 +61,12 @@ def main():
     # -------------------
     n_mel_channels = hps["data"]["n_mel_channels"]
 
-    # Get n_vocab properly
-    try:
-        # Try to get symbols length first
-        symbols = train_dataset.get_text_cleaner_symbols()
-        if isinstance(symbols, int):
-            n_vocab = symbols  # It's already the number
-        else:
-            n_vocab = len(symbols)  # It's a list of symbols
-    except:
-        # Fallback to n_symbols attribute
-        n_vocab = getattr(train_dataset, "n_symbols", 300)
+    # Get n_vocab properly - FIXED: No len() call
+    n_vocab = train_dataset.get_text_cleaner_symbols()
+    
+    # Safety check in case it returns a list instead of integer
+    if not isinstance(n_vocab, int):
+        n_vocab = len(n_vocab) if hasattr(n_vocab, '__len__') else 300
     
     logging.info(f"Using n_vocab: {n_vocab}")
 
