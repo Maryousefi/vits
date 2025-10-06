@@ -105,9 +105,8 @@ def main():
 
     os.makedirs("logs", exist_ok=True)
 
-    # -------------------
+
     # Training Loop
-    # -------------------
     for epoch in range(hps["train"]["epochs"]):
         net_g.train()
         net_d.train()
