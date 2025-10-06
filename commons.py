@@ -149,7 +149,6 @@ def clip_grad_value_(parameters, clip_value, norm_type=2):
     return total_norm
 
 
-# ---- Added Missing Function ----
 def spectrogram_torch(y, n_fft, sampling_rate, hop_size, win_size, center=False):
     """
     Compute magnitude spectrogram.
@@ -175,3 +174,34 @@ def spectrogram_torch(y, n_fft, sampling_rate, hop_size, win_size, center=False)
     )
     spec = torch.sqrt(spec.real ** 2 + spec.imag ** 2 + 1e-6)
     return spec
+
+
+# ADD THIS NEW FUNCTION FOR MEL SPECTROGRAMS
+def mel_spectrogram_torch(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin, fmax, center=False):
+    """
+    Compute mel spectrogram using torchaudio.
+    """
+    try:
+        import torchaudio
+        # Create mel spectrogram transform
+        mel_transform = torchaudio.transforms.MelSpectrogram(
+            sample_rate=sampling_rate,
+            n_fft=n_fft,
+            win_length=win_size,
+            hop_length=hop_size,
+            f_min=fmin,
+            f_max=fmax,
+            n_mels=num_mels,
+            center=center,
+            power=1.0,
+            normalized=False,
+        ).to(y.device)
+        
+        # Compute mel spectrogram
+        mel = mel_transform(y)
+        return mel
+        
+    except ImportError:
+        # Fallback: use regular spectrogram if torchaudio not available
+        print("Warning: torchaudio not available, using regular spectrogram instead of mel")
+        return spectrogram_torch(y, n_fft, sampling_rate, hop_size, win_size, center)
