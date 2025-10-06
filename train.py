@@ -7,7 +7,7 @@ from utils import save_checkpoint, load_checkpoint
 from data_utils import TextAudioLoader, TextAudioCollate
 from models import SynthesizerTrn, MultiPeriodDiscriminator
 from losses import generator_loss, discriminator_loss
-from commons import slice_segments
+from commons import slice_segments, mel_spectrogram_torch
 import logging
 import json
 import argparse
@@ -128,19 +128,33 @@ def main():
             )
 
             # Generator loss
-            y_mel_slice = slice_segments(y_mel, ids_slice, hps["train"]["segment_size"])
+            y_mel_slice = slice_segments(y_mel, ids_slice, hps["train"]["segment_size"] // hps["data"]["hop_length"])
             y_audio_slice = slice_segments(y_audio_3d, ids_slice, hps["train"]["segment_size"])
             y_hat_slice = slice_segments(y_hat, ids_slice, hps["train"]["segment_size"])
             
-            # Prepare audio for discriminator - keep as 3D but ensure correct shape
-            # Discriminator expects: (batch, 1, audio_length)
-            y_audio_slice_disc = y_audio_slice  # Already in correct shape: (batch, 1, segment_size)
-            y_hat_slice_disc = y_hat_slice      # Already in correct shape: (batch, 1, segment_size)
+            # Convert generator output to mel spectrogram for mel loss
+            y_hat_mel = mel_spectrogram_torch(
+                y_hat_slice.squeeze(1),
+                hps["data"]["filter_length"],
+                hps["data"]["n_mel_channels"],
+                hps["data"]["sampling_rate"],
+                hps["data"]["hop_length"],
+                hps["data"]["win_length"],
+                hps["data"].get("mel_fmin", 0.0),
+                hps["data"].get("mel_fmax", 8000.0),
+                center=False
+            )
             
-            # FIXED: Use audio waveforms for discriminator with correct shape
+            # Prepare audio for discriminator
+            y_audio_slice_disc = y_audio_slice  # Shape: (batch, 1, segment_size)
+            y_hat_slice_disc = y_hat_slice      # Shape: (batch, 1, segment_size)
+            
+            # FIXED: Use audio waveforms for discriminator
             y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_disc, y_hat_slice_disc)
             loss_gen, _ = generator_loss(y_d_hat_g)
-            loss_mel = F.l1_loss(y_hat_slice, y_mel_slice)
+            
+            # FIXED: Compare mel spectrograms, not audio with mel
+            loss_mel = F.l1_loss(y_hat_mel, y_mel_slice)
             loss_g = loss_gen + loss_mel * 45.0
 
             optim_g.zero_grad()
