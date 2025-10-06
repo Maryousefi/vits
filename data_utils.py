@@ -1,151 +1,125 @@
 import os
 import random
+import numpy as np
 import torch
 import torch.utils.data
-import numpy as np
-import librosa
+import torchaudio
 from commons import spectrogram_torch
-from utils import load_wav_to_torch, get_hparams_from_file
+from text import text_to_sequence
 
-# ===============================================================
-# Text-Audio Dataset & Collation Utilities for Single-Speaker VITS
-# ===============================================================
 
 class TextAudioLoader(torch.utils.data.Dataset):
     """
-    Loads (text, audio) pairs for training.
-    Each line in the filelist must have: <path>|<text>
+    Loads text and corresponding mel-spectrogram or waveform paths.
+    Expected filelist format: <audio_path>|<text>
     """
 
     def __init__(self, filelist_path, hps):
-        self.filepaths_and_text = self._load_filepaths_and_text(filelist_path)
+        self.filelist = self.load_filelist(filelist_path)
         self.max_wav_value = hps["data"]["max_wav_value"]
         self.sampling_rate = hps["data"]["sampling_rate"]
         self.filter_length = hps["data"]["filter_length"]
         self.hop_length = hps["data"]["hop_length"]
         self.win_length = hps["data"]["win_length"]
-        self.n_mel_channels = hps["data"]["n_mel_channels"]  # should be 80
+        self.n_mel_channels = hps["data"]["n_mel_channels"]
         self.text_cleaners = hps["data"]["text_cleaners"]
-        self.add_blank = hps["data"].get("add_blank", True)
+        self.add_blank = hps["data"]["add_blank"]
+        self.n_speakers = hps["data"]["n_speakers"]
+        self._n_symbols = 300  # Default; update if text_cleaners defines otherwise
 
-    def _load_filepaths_and_text(self, filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            filepaths_and_text = [line.strip().split("|") for line in f.readlines()]
-        return filepaths_and_text
+    def load_filelist(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if len(line.strip()) > 0]
+
+    def get_audio_text_pair(self, line):
+        parts = line.strip().split("|")
+        if len(parts) < 2:
+            raise ValueError(f"Invalid line in filelist: {line}")
+
+        audio_path, text = parts[0], parts[1]
+        text_seq = self.get_text(text)
+        mel = self.get_mel(audio_path)
+        return text_seq, mel
 
     def get_text(self, text):
-        """
-        You can adapt this for Persian text processing.
-        For now it converts text to a list of character IDs.
-        """
-        # Simple placeholder cleaner; replace with your Persian cleaner if needed
-        text = text.strip().lower()
-        symbols = list(text)
-        text_norm = [ord(s) % 256 for s in symbols]  # crude numeric mapping
-        return torch.LongTensor(text_norm)
+        text_norm = text_to_sequence(text, self.text_cleaners)
+        if self.add_blank:
+            text_norm = commons.intersperse(text_norm, 0)
+        text_tensor = torch.LongTensor(text_norm)
+        return text_tensor
 
     def get_mel(self, filename):
-        audio, sampling_rate = load_wav_to_torch(filename)
-        if sampling_rate != self.sampling_rate:
-            audio = librosa.resample(
-                audio.numpy(), orig_sr=sampling_rate, target_sr=self.sampling_rate
-            )
-            audio = torch.from_numpy(audio)
+        # Load and normalize waveform
+        audio, sr = torchaudio.load(filename)
+        if sr != self.sampling_rate:
+            audio = torchaudio.functional.resample(audio, sr, self.sampling_rate)
+        audio = audio / self.max_wav_value
+        audio = audio.mean(dim=0, keepdim=True)  # mono
+        audio = audio.clamp(-1, 1)
 
-        audio_norm = audio / self.max_wav_value
-        audio_norm = audio_norm.unsqueeze(0)
-
-        # Compute Mel spectrogram - FIXED PARAMETER NAMES
-        mel = spectrogram_torch(
-            audio_norm,
-            self.filter_length,  # n_fft
+        # Compute spectrogram
+        spec = spectrogram_torch(
+            audio,
+            self.filter_length,
             self.sampling_rate,
-            self.hop_length,     # hop_size
-            self.win_length,     # win_size
-            self.n_mel_channels,
+            self.hop_length,
+            self.win_length,
             center=False
         )
-        mel = torch.squeeze(mel, 0)
-        return mel, audio_norm
+        spec = torch.squeeze(spec, 0)
+        return spec
 
     def __getitem__(self, index):
-        filepath, text = self.filepaths_and_text[index]
-        text = self.get_text(text)
-        mel, audio = self.get_mel(filepath)
-        return (text, mel, audio)
+        line = self.filelist[index]
+        text, mel = self.get_audio_text_pair(line)
+        return text, mel
 
     def __len__(self):
-        return len(self.filepaths_and_text)
+        return len(self.filelist)
+
+    # Property for train.py compatibility
+    @property
+    def n_symbols(self):
+        return self._n_symbols
 
     def get_text_cleaner_symbols(self):
-        # Rough estimate of text vocabulary size
-        return 256
+        # Deprecated (kept for compatibility)
+        return self._n_symbols
 
 
 class TextAudioCollate:
-    """Collates training batches from TextAudioLoader."""
+    """Zero-pads model inputs and targets for batched training."""
+
+    def __init__(self):
+        pass
 
     def __call__(self, batch):
-        # Sort batch by descending text length for packing efficiency
-        batch.sort(key=lambda x: len(x[0]), reverse=True)
-        text_lengths = torch.LongTensor([len(x[0]) for x in batch])
-        mel_lengths = torch.LongTensor([x[1].size(1) for x in batch])
+        # batch: list of (text, mel)
+        _, mel = batch[0]
+        n_mel_channels = mel.size(0)
 
-        # Pad text sequences
-        max_text_len = text_lengths.max().item()
-        text_padded = torch.zeros(len(batch), max_text_len, dtype=torch.long)
-        for i, (text, _, _) in enumerate(batch):
-            text_padded[i, :text.size(0)] = text
-
-        # Pad Mel spectrograms
-        max_mel_len = mel_lengths.max().item()
-        n_mel_channels = batch[0][1].size(0)
-        mel_padded = torch.zeros(len(batch), n_mel_channels, max_mel_len)
-        for i, (_, mel, _) in enumerate(batch):
-            mel_padded[i, :, :mel.size(1)] = mel
-
-        # Pad audio waveforms
-        max_audio_len = max([x[2].size(1) for x in batch])
-        audio_padded = torch.zeros(len(batch), 1, max_audio_len)
-        for i, (_, _, audio) in enumerate(batch):
-            audio_padded[i, :, :audio.size(1)] = audio
-
-        return text_padded, text_lengths, mel_padded, mel_lengths, audio_padded, torch.LongTensor(
-            [x[2].size(1) for x in batch]
+        # Sort descending by text length
+        input_lengths, ids_sorted_decreasing = torch.sort(
+            torch.LongTensor([len(x[0]) for x in batch]),
+            dim=0,
+            descending=True
         )
 
+        max_input_len = input_lengths[0]
+        max_output_len = max([x[1].size(1) for x in batch])
 
-# ===============================================================
-# Utility Functions
-# ===============================================================
+        # Prepare padded tensors
+        text_padded = torch.LongTensor(len(batch), max_input_len)
+        text_padded.zero_()
+        mel_padded = torch.FloatTensor(len(batch), n_mel_channels, max_output_len)
+        mel_padded.zero_()
+        output_lengths = torch.LongTensor(len(batch))
 
-def create_dataloader(hps, is_val=False):
-    filelist = (
-        hps["train"]["validation_files"]
-        if is_val
-        else hps["train"]["training_files"]
-    )
-    dataset = TextAudioLoader(filelist, hps)
-    collate_fn = TextAudioCollate()
+        # Fill tensors
+        for i in range(len(ids_sorted_decreasing)):
+            text, mel = batch[ids_sorted_decreasing[i]]
+            text_padded[i, :text.size(0)] = text
+            mel_padded[i, :, :mel.size(1)] = mel
+            output_lengths[i] = mel.size(1)
 
-    loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=1 if is_val else hps["train"]["batch_size"],
-        num_workers=2,
-        shuffle=not is_val,
-        collate_fn=collate_fn,
-        pin_memory=True,
-        drop_last=not is_val,
-    )
-    return loader, dataset
-
-
-if __name__ == "__main__":
-    # Debug loader
-    hps = get_hparams_from_file("configs/fa_single_speaker.json")
-    train_loader, _ = create_dataloader(hps)
-    for batch in train_loader:
-        print("Loaded batch shapes:")
-        for tensor in batch:
-            print(tensor.shape)
-        break
+        return text_padded, input_lengths, mel_padded, output_lengths
