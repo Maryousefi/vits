@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import torch.utils.data
 import torchaudio
+
+import commons  
 from commons import spectrogram_torch
 from text import text_to_sequence
 
@@ -25,7 +27,7 @@ class TextAudioLoader(torch.utils.data.Dataset):
         self.text_cleaners = hps["data"]["text_cleaners"]
         self.add_blank = hps["data"]["add_blank"]
         self.n_speakers = hps["data"]["n_speakers"]
-        self._n_symbols = 300  # Default; update if text_cleaners defines otherwise
+        self._n_symbols = 300  # default fallback
 
     def load_filelist(self, path):
         with open(path, "r", encoding="utf-8") as f:
@@ -44,7 +46,7 @@ class TextAudioLoader(torch.utils.data.Dataset):
     def get_text(self, text):
         text_norm = text_to_sequence(text, self.text_cleaners)
         if self.add_blank:
-            text_norm = commons.intersperse(text_norm, 0)
+            text_norm = commons.intersperse(text_norm, 0)  
         text_tensor = torch.LongTensor(text_norm)
         return text_tensor
 
