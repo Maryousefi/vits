@@ -129,7 +129,8 @@ def main():
 
             # Calculate mel frame length from audio segment size
             segment_size = hps["train"]["segment_size"]
-            mel_segment_size = segment_size // hps["data"]["hop_length"]
+            hop_length = hps["data"]["hop_length"]
+            mel_segment_size = segment_size // hop_length
             
             # Generator loss - slice all tensors to the same segment size
             y_mel_slice = slice_segments(y_mel, ids_slice, mel_segment_size)
@@ -137,6 +138,7 @@ def main():
             y_hat_slice = slice_segments(y_hat, ids_slice, segment_size)
             
             # Convert generator output to mel spectrogram for mel loss
+            # Use the same parameters as in data_utils.py
             y_hat_mel = mel_spectrogram_torch(
                 y_hat_slice.squeeze(1),
                 hps["data"]["filter_length"],
@@ -149,8 +151,17 @@ def main():
                 center=False
             )
             
-            # Slice the generated mel to match the ground truth mel segment size
-            y_hat_mel_slice = slice_segments(y_hat_mel, torch.zeros_like(ids_slice), mel_segment_size)
+            # Debug: Check dimensions
+            if batch_idx == 0:
+                logging.info(f"y_hat_mel shape: {y_hat_mel.shape}")
+                logging.info(f"y_mel_slice shape: {y_mel_slice.shape}")
+                logging.info(f"mel_segment_size: {mel_segment_size}")
+            
+            # Ensure both mel tensors have the same dimensions
+            # If dimensions don't match, take the minimum length
+            min_mel_length = min(y_hat_mel.size(2), y_mel_slice.size(2))
+            y_hat_mel_cropped = y_hat_mel[:, :, :min_mel_length]
+            y_mel_slice_cropped = y_mel_slice[:, :, :min_mel_length]
             
             # Prepare audio for discriminator
             y_audio_slice_disc = y_audio_slice  # Shape: (batch, 1, segment_size)
@@ -161,7 +172,7 @@ def main():
             loss_gen, _ = generator_loss(y_d_hat_g)
             
             # FIXED: Compare mel spectrograms with the same dimensions
-            loss_mel = F.l1_loss(y_hat_mel_slice, y_mel_slice)
+            loss_mel = F.l1_loss(y_hat_mel_cropped, y_mel_slice_cropped)
             loss_g = loss_gen + loss_mel * 45.0
 
             optim_g.zero_grad()
