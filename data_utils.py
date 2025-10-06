@@ -44,8 +44,8 @@ class TextAudioLoader(torch.utils.data.Dataset):
 
         audio_path, text = parts[0], parts[1]
         text_seq = self.get_text(text)
-        mel = self.get_mel(audio_path)
-        return text_seq, mel
+        mel, audio = self.get_mel_and_audio(audio_path)  # CHANGED: Get both mel and audio
+        return text_seq, mel, audio
 
     def get_text(self, text):
         text_norm = text_to_sequence(text, self.text_cleaners)
@@ -54,7 +54,7 @@ class TextAudioLoader(torch.utils.data.Dataset):
         text_tensor = torch.LongTensor(text_norm)
         return text_tensor
 
-    def get_mel(self, filename):
+    def get_mel_and_audio(self, filename):
         # Load and normalize waveform
         audio, sr = torchaudio.load(filename)
         if sr != self.sampling_rate:
@@ -63,7 +63,7 @@ class TextAudioLoader(torch.utils.data.Dataset):
         audio = audio.mean(dim=0, keepdim=True)  # mono
         audio = audio.clamp(-1, 1)
 
-        # Compute MEL spectrogram - CHANGED: Use mel spectrogram
+        # Compute MEL spectrogram
         mel = mel_spectrogram_torch(
             audio,
             self.filter_length,      # n_fft
@@ -76,12 +76,14 @@ class TextAudioLoader(torch.utils.data.Dataset):
             center=False
         )
         mel = torch.squeeze(mel, 0)
-        return mel
+        
+        # Return both mel spectrogram and audio waveform
+        return mel, audio.squeeze(0)
 
     def __getitem__(self, index):
         line = self.filelist[index]
-        text, mel = self.get_audio_text_pair(line)
-        return text, mel
+        text, mel, audio = self.get_audio_text_pair(line)  # CHANGED: Include audio
+        return text, mel, audio
 
     def __len__(self):
         return len(self.filelist)
@@ -103,8 +105,8 @@ class TextAudioCollate:
         pass
 
     def __call__(self, batch):
-        # batch: list of (text, mel)
-        _, mel = batch[0]
+        # batch: list of (text, mel, audio)
+        _, mel, audio = batch[0]
         n_mel_channels = mel.size(0)
 
         # Sort descending by text length
@@ -116,19 +118,26 @@ class TextAudioCollate:
 
         max_input_len = input_lengths[0]
         max_output_len = max([x[1].size(1) for x in batch])
+        max_audio_len = max([x[2].size(0) for x in batch])  # Audio length
 
         # Prepare padded tensors
         text_padded = torch.LongTensor(len(batch), max_input_len)
         text_padded.zero_()
         mel_padded = torch.FloatTensor(len(batch), n_mel_channels, max_output_len)
         mel_padded.zero_()
+        audio_padded = torch.FloatTensor(len(batch), max_audio_len)  # Audio tensor
+        audio_padded.zero_()
         output_lengths = torch.LongTensor(len(batch))
+        audio_lengths = torch.LongTensor(len(batch))  # Audio lengths
 
         # Fill tensors
         for i in range(len(ids_sorted_decreasing)):
-            text, mel = batch[ids_sorted_decreasing[i]]
+            text, mel, audio = batch[ids_sorted_decreasing[i]]
             text_padded[i, :text.size(0)] = text
             mel_padded[i, :, :mel.size(1)] = mel
+            audio_padded[i, :audio.size(0)] = audio  # Fill audio
             output_lengths[i] = mel.size(1)
+            audio_lengths[i] = audio.size(0)  # Set audio length
 
-        return text_padded, input_lengths, mel_padded, output_lengths
+        # CHANGED: Return 6 elements as expected by train.py
+        return text_padded, input_lengths, mel_padded, output_lengths, audio_padded, audio_lengths
