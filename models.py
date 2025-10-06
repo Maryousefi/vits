@@ -163,6 +163,7 @@ class TextEncoder(nn.Module):
 class ResidualCouplingBlock(nn.Module):
     def __init__(self, channels, hidden_channels, kernel_size, dilation_rate, n_layers, n_flows=4, gin_channels=0):
         super().__init__()
+        self.channels = channels  # ADDED: Store channels as attribute
         self.flows = nn.ModuleList()
         for i in range(n_flows):
             self.flows.append(modules.ResidualCouplingLayer(channels, hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels=gin_channels, mean_only=True))
@@ -387,7 +388,8 @@ class SynthesizerTrn(nn.Module):
         m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
         logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 
-        z_slice, ids_slice = commons.rand_slice_segments(z, y_lengths, self.flow.channels)
+        # FIXED: Use z.size(1) instead of self.flow.channels
+        z_slice, ids_slice = commons.rand_slice_segments(z, y_lengths, z.size(1))
         o = self.dec(z_slice, g=g)
         return o, l_length, attn, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
