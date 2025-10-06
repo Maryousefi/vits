@@ -120,7 +120,7 @@ def main():
             y_audio = y_audio.to(device)
 
             # Add channel dimension to audio for slicing (from 2D to 3D)
-            y_audio = y_audio.unsqueeze(1)  # Shape: (batch, 1, audio_length)
+            y_audio_3d = y_audio.unsqueeze(1)  # Shape: (batch, 1, audio_length)
 
             # Generator forward - use mel spectrograms for training
             y_hat, l_length, attn, ids_slice, x_mask, z_mask, _ = net_g(
@@ -129,15 +129,16 @@ def main():
 
             # Generator loss
             y_mel_slice = slice_segments(y_mel, ids_slice, hps["train"]["segment_size"])
-            y_audio_slice = slice_segments(y_audio, ids_slice, hps["train"]["segment_size"])
+            y_audio_slice = slice_segments(y_audio_3d, ids_slice, hps["train"]["segment_size"])
             y_hat_slice = slice_segments(y_hat, ids_slice, hps["train"]["segment_size"])
             
-            # Remove channel dimension for discriminator if needed
-            y_audio_slice_flat = y_audio_slice.squeeze(1)  # Shape: (batch, audio_length)
-            y_hat_slice_flat = y_hat_slice.squeeze(1)      # Shape: (batch, audio_length)
+            # Prepare audio for discriminator - keep as 3D but ensure correct shape
+            # Discriminator expects: (batch, 1, audio_length)
+            y_audio_slice_disc = y_audio_slice  # Already in correct shape: (batch, 1, segment_size)
+            y_hat_slice_disc = y_hat_slice      # Already in correct shape: (batch, 1, segment_size)
             
-            # FIXED: Use audio waveforms for discriminator
-            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_flat, y_hat_slice_flat)
+            # FIXED: Use audio waveforms for discriminator with correct shape
+            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_disc, y_hat_slice_disc)
             loss_gen, _ = generator_loss(y_d_hat_g)
             loss_mel = F.l1_loss(y_hat_slice, y_mel_slice)
             loss_g = loss_gen + loss_mel * 45.0
@@ -147,7 +148,7 @@ def main():
             optim_g.step()
 
             # Discriminator loss
-            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_flat, y_hat_slice_flat.detach())
+            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_disc, y_hat_slice_disc.detach())
             loss_disc, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
 
             optim_d.zero_grad()
