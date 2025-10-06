@@ -33,14 +33,11 @@ def main():
     # -------------------
     # Data Loading
     # -------------------
-    train_dataset = TextAudioLoader(
-        hps["train"]["training_files"], hps["data"]["text_cleaners"], hps["data"]["sampling_rate"]
-    )
-    val_dataset = TextAudioLoader(
-        hps["train"]["validation_files"], hps["data"]["text_cleaners"], hps["data"]["sampling_rate"]
-    )
+    train_dataset = TextAudioLoader(hps["train"]["training_files"], hps)
+    val_dataset = TextAudioLoader(hps["train"]["validation_files"], hps)
 
     collate_fn = TextAudioCollate()
+
     train_loader = DataLoader(
         train_dataset,
         num_workers=2,
@@ -63,10 +60,12 @@ def main():
     # Model Setup
     # -------------------
     n_mel_channels = hps["data"]["n_mel_channels"]
-    n_vocab = getattr(train_dataset, "n_symbols", 300)  # fallback if not defined
+
+    # Fixed: no len() here
+    n_vocab = getattr(train_dataset, "n_symbols", 300)
 
     net_g = SynthesizerTrn(
-        n_vocab,  # fixed: removed len() call
+        n_vocab,  # number of phoneme or text symbols
         n_mel_channels,
         hps["train"]["segment_size"],
         hps["model"]["inter_channels"],
