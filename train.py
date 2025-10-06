@@ -127,10 +127,14 @@ def main():
                 x, x_lengths, y_mel, y_lengths
             )
 
-            # Generator loss
-            y_mel_slice = slice_segments(y_mel, ids_slice, hps["train"]["segment_size"] // hps["data"]["hop_length"])
-            y_audio_slice = slice_segments(y_audio_3d, ids_slice, hps["train"]["segment_size"])
-            y_hat_slice = slice_segments(y_hat, ids_slice, hps["train"]["segment_size"])
+            # Calculate mel frame length from audio segment size
+            segment_size = hps["train"]["segment_size"]
+            mel_segment_size = segment_size // hps["data"]["hop_length"]
+            
+            # Generator loss - slice all tensors to the same segment size
+            y_mel_slice = slice_segments(y_mel, ids_slice, mel_segment_size)
+            y_audio_slice = slice_segments(y_audio_3d, ids_slice, segment_size)
+            y_hat_slice = slice_segments(y_hat, ids_slice, segment_size)
             
             # Convert generator output to mel spectrogram for mel loss
             y_hat_mel = mel_spectrogram_torch(
@@ -145,6 +149,9 @@ def main():
                 center=False
             )
             
+            # Slice the generated mel to match the ground truth mel segment size
+            y_hat_mel_slice = slice_segments(y_hat_mel, torch.zeros_like(ids_slice), mel_segment_size)
+            
             # Prepare audio for discriminator
             y_audio_slice_disc = y_audio_slice  # Shape: (batch, 1, segment_size)
             y_hat_slice_disc = y_hat_slice      # Shape: (batch, 1, segment_size)
@@ -153,8 +160,8 @@ def main():
             y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_disc, y_hat_slice_disc)
             loss_gen, _ = generator_loss(y_d_hat_g)
             
-            # FIXED: Compare mel spectrograms, not audio with mel
-            loss_mel = F.l1_loss(y_hat_mel, y_mel_slice)
+            # FIXED: Compare mel spectrograms with the same dimensions
+            loss_mel = F.l1_loss(y_hat_mel_slice, y_mel_slice)
             loss_g = loss_gen + loss_mel * 45.0
 
             optim_g.zero_grad()
