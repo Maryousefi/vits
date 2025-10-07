@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from utils import save_checkpoint, load_checkpoint
 from data_utils import TextAudioLoader, TextAudioCollate
 from models import SynthesizerTrn, MultiPeriodDiscriminator
-from losses import generator_loss, discriminator_loss
+from losses import generator_loss, discriminator_loss, feature_loss, kl_loss
 from commons import slice_segments, mel_spectrogram_torch
 import logging
 import json
@@ -123,7 +123,7 @@ def main():
             y_audio_3d = y_audio.unsqueeze(1)  # Shape: (batch, 1, audio_length)
 
             # Generator forward - use mel spectrograms for training
-            y_hat, l_length, attn, ids_slice, x_mask, z_mask, _ = net_g(
+            y_hat, l_length, attn, ids_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = net_g(
                 x, x_lengths, y_mel, y_lengths
             )
 
@@ -168,20 +168,25 @@ def main():
             y_hat_slice_disc = y_hat_slice      # Shape: (batch, 1, segment_size)
             
             # FIXED: Use audio waveforms for discriminator
-            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_disc, y_hat_slice_disc)
-            loss_gen, _ = generator_loss(y_d_hat_g)
+            y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(y_audio_slice_disc, y_hat_slice_disc)
             
-            # FIXED: Compare mel spectrograms with the same dimensions
+            # Generator losses
+            loss_gen, _ = generator_loss(y_d_hat_g)
+            loss_fm = feature_loss(fmap_r, fmap_g)
             loss_mel = F.l1_loss(y_hat_mel_cropped, y_mel_slice_cropped)
-            loss_g = loss_gen + loss_mel * 45.0
+            
+            # Total generator loss
+            loss_g = loss_gen + loss_fm + loss_mel * 45.0 + l_length
 
             optim_g.zero_grad()
             loss_g.backward()
             optim_g.step()
 
             # Discriminator loss
-            y_d_hat_r, y_d_hat_g, _, _ = net_d(y_audio_slice_disc, y_hat_slice_disc.detach())
-            loss_disc, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
+            y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(y_audio_slice_disc, y_hat_slice_disc.detach())
+            
+            # FIXED: Unpack all 3 values from discriminator_loss
+            loss_disc, _, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
 
             optim_d.zero_grad()
             loss_disc.backward()
