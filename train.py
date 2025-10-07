@@ -213,8 +213,12 @@ def main():
 
         # Save every 5 epochs
         if (epoch + 1) % 5 == 0:
+            # FIXED: Removed the extra argument - save_checkpoint takes 5 args, not 6
             save_checkpoint(
-                net_g, net_d, optim_g, optim_d, epoch + 1, f"logs/{args.model}_G.pth"
+                net_g, optim_g, hps["train"]["learning_rate"], epoch, f"logs/{args.model}_G.pth"
+            )
+            save_checkpoint(
+                net_d, optim_d, hps["train"]["learning_rate"], epoch, f"logs/{args.model}_D.pth"
             )
 
     logging.info("Training completed successfully.")
