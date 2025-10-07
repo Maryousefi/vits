@@ -175,8 +175,16 @@ def main():
             loss_fm = feature_loss(fmap_r, fmap_g)
             loss_mel = F.l1_loss(y_hat_mel_cropped, y_mel_slice_cropped)
             
+            # FIXED: Ensure l_length is a scalar
+            if isinstance(l_length, torch.Tensor) and l_length.dim() > 0:
+                l_length = l_length.mean()  # Reduce to scalar if it's not already
+            
             # Total generator loss
             loss_g = loss_gen + loss_fm + loss_mel * 45.0 + l_length
+
+            # FIXED: Ensure loss_g is a scalar
+            if isinstance(loss_g, torch.Tensor) and loss_g.dim() > 0:
+                loss_g = loss_g.mean()
 
             optim_g.zero_grad()
             loss_g.backward()
@@ -187,6 +195,10 @@ def main():
             
             # FIXED: Unpack all 3 values from discriminator_loss
             loss_disc, _, _ = discriminator_loss(y_d_hat_r, y_d_hat_g)
+
+            # FIXED: Ensure loss_disc is a scalar
+            if isinstance(loss_disc, torch.Tensor) and loss_disc.dim() > 0:
+                loss_disc = loss_disc.mean()
 
             optim_d.zero_grad()
             loss_disc.backward()
