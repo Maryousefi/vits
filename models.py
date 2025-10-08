@@ -8,18 +8,8 @@ import commons
 import modules
 import attentions
 
-# FIXED: Import the core module directly instead of the nested structure
-try:
-    from monotonic_align.core import maximum_path
-except ImportError:
-    # Fallback for different import paths
-    try:
-        import monotonic_align.core as monotonic_align
-        maximum_path = monotonic_align.maximum_path
-    except ImportError:
-        # If that fails, try the original structure
-        from monotonic_align import monotonic_align
-        maximum_path = monotonic_align.maximum_path
+# FIXED: Import from the package level, not from core directly
+from monotonic_align import maximum_path
 
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
@@ -387,7 +377,7 @@ class SynthesizerTrn(nn.Module):
             neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
             attn_mask = torch.unsqueeze(x_mask, 2) * torch.unsqueeze(y_mask, -1)
             
-            # FIXED: Use the imported maximum_path function directly
+            # FIXED: Use the imported maximum_path function
             attn = maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
 
         w = attn.sum(2)
