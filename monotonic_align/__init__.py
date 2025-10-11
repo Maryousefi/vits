@@ -1,8 +1,9 @@
 import numpy as np
 import torch
+import importlib
 
-# Import the compiled extension properly
-from monotonic_align import core
+# Dynamically import the compiled extension (avoids circular imports)
+core = importlib.import_module("monotonic_align.core")
 
 maximum_path_c = core.maximum_path_c
 
