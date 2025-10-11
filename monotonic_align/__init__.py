@@ -1,29 +1,20 @@
 import os
 import sys
-import importlib.util
 import numpy as np
 import torch
 
 # Add the current directory to sys.path so Python can find the compiled .so file
-current_dir = os.path.dirname(__file__)
+current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
-# Path to the compiled extension
-so_file = os.path.join(current_dir, "core.cpython-38-x86_64-linux-gnu.so")
-so_file_short = os.path.join(current_dir, "core.so")
-
-# If needed, rename the .so file to a shorter name for cleaner import
-if os.path.exists(so_file) and not os.path.exists(so_file_short):
-    os.rename(so_file, so_file_short)
-
-# Dynamically load the core module
-spec = importlib.util.spec_from_file_location("core", so_file_short)
-core = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(core)
-
-# Expose the C function
-maximum_path_c = core.maximum_path_c
+try:
+    import core
+    maximum_path_c = core.maximum_path_c
+except ImportError as e:
+    print(f"Error importing core module: {e}")
+    print(f"Make sure the .so file (core.cpython-38-x86_64-linux-gnu.so) exists in {current_dir}")
+    raise
 
 def maximum_path(neg_cent, mask):
     """Compute monotonic alignment path using the Cython core extension."""
