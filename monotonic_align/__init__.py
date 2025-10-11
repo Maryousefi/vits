@@ -1,9 +1,20 @@
 import numpy as np
 import torch
+import sys
+import os
 
-# FIXED: Import directly from core instead of nested structure
-from .core import maximum_path_c
+# Add current directory to path to find the .so file
+sys.path.insert(0, os.path.dirname(__file__))
 
+# FIXED: Import the compiled module directly instead of relative import
+try:
+    # The .so file creates a module named 'core' - import it directly
+    import core
+    maximum_path_c = core.maximum_path_c
+except ImportError as e:
+    print(f"Error importing core module: {e}")
+    print("Make sure core.cpython-38-x86_64-linux-gnu.so exists in the current directory")
+    raise
 
 def maximum_path(neg_cent, mask):
   """ Cython optimized version.
